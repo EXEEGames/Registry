@@ -1,0 +1,102 @@
+name: Submit Game
+description: Submit a new game to EXEE
+title: "[GAME SUBMISSION]: "
+labels: ["game-submission"]
+
+body:
+
+  - type: input
+    id: game_name
+    attributes:
+      label: Game Name
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+    validations:
+      required: true
+
+  - type: input
+    id: developer
+    attributes:
+      label: Developer Name
+    validations:
+      required: true
+
+  - type: input
+    id: repository
+    attributes:
+      label: Repository URL
+    validations:
+      required: true
+
+  - type: input
+    id: download
+    attributes:
+      label: PCK Download URL
+    validations:
+      required: true
+
+  - type: input
+    id: thumbnail
+    attributes:
+      label: Thumbnail URL
+    validations:
+      required: true
+
+  - type: textarea
+    id: images
+    attributes:
+      label: Screenshot URLs
+      description: One image URL per line
+    validations:
+      required: true
+
+  - type: textarea
+    id: genres
+    attributes:
+      label: Genres
+      description: One genre per line
+    validations:
+      required: true
+
+  - type: dropdown
+    id: age_rating
+    attributes:
+      label: Age Rating
+      options:
+        - N/A
+        - 3+
+        - 7+
+        - 12+
+        - 16+
+        - 18+ (NOT ALLOWED)
+        - All ages
+    validations:
+      required: true
+
+  - type: dropdown
+    id: multiplayer
+    attributes:
+      label: Multiplayer
+      options:
+        - Singleplayer
+        - External Multiplayer (3rd Party - eg. Photon)
+        - EXEE Multiplayer
+
+  - type: checkboxes
+    id: confirmation
+    attributes:
+      label: Confirmation
+      options:
+        - label: I confirm this game is safe
+          required: true
+
+        - label: I own this content
+          required: true
+
+        - label: I have made this with the EXEE Godot plugin/the EXEE Editor (optional but recommended for multiplayer)
+          required: false

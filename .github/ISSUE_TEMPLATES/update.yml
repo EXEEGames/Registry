@@ -1,0 +1,80 @@
+name: Update Game
+description: Update an existing EXEE game
+title: "[GAME UPDATE]: "
+labels: ["game-update"]
+
+body:
+
+  - type: input
+    id: game_id
+    attributes:
+      label: Game ID (from submission)
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      placeholder: 1.1.0
+
+  - type: input
+    id: game_name
+    attributes:
+      label: Updated Game Name
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Updated Description
+
+  - type: input
+    id: download
+    attributes:
+      label: New PCK Download URL
+
+  - type: input
+    id: thumbnail
+    attributes:
+      label: New Thumbnail URL
+
+  - type: textarea
+    id: images
+    attributes:
+      label: Screenshot URLs
+      description: One image per line
+
+  - type: textarea
+    id: genres
+    attributes:
+      label: Genres
+      description: One genre per line
+
+  - type: dropdown
+    id: age_rating
+    attributes:
+      label: Age Rating
+      options:
+        - N/A
+        - 3+
+        - 7+
+        - 12+
+        - 16+
+        - 18+ (NOT ALLOWED)
+        - All ages
+
+  - type: dropdown
+    id: multiplayer
+    attributes:
+      label: Multiplayer
+      options:
+        - Singleplayer
+        - P2P
+        - Online
+
+  - type: textarea
+    id: changelog
+    attributes:
+      label: Changelog
+    validations:
+      required: true

@@ -1,8 +1,5 @@
 {
   "games": [
-    {
-      "name": "EXEE Test Game",
-      "download": "https://github.com/EXEEGames/TestGame/raw/refs/heads/main/src/EXEE-test-1.pck"
-    }
+    
   ]
 }
