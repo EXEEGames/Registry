@@ -1,5 +1,25 @@
 {
   "games": [
-    
+    {
+      "id": "EXEE-1778346898-FVN9S-7",
+      "name": "EXEE Test Game",
+      "description": "Official EXEE Test Game",
+      "developer": "EXEE Studios",
+      "version": "1.0.0",
+      "created_at": "2026-05-09T17:14:58.352594Z",
+      "updated_at": "2026-05-09T17:14:58.352601Z",
+      "genres": [],
+      "age_rating": "All Ages",
+      "thumbnail": "https://avatars.githubusercontent.com/u/282643948?s=200&v=4",
+      "images": [
+        "https://avatars.githubusercontent.com/u/282643948?s=200&v=4",
+        "https://avatars.githubusercontent.com/u/282643948?s=200&v=4",
+        "https://avatars.githubusercontent.com/u/282643948?s=200&v=4"
+      ],
+      "multiplayer": "SINGLEPLAYER",
+      "download": "https://github.com/EXEEGames/TestGame/raw/refs/heads/main/src/EXEE-test-1.pck",
+      "sha256": "4ed974752f1da2b096dbf0232e08e0948c2839b6e88ea0bd0cf5500993ab1a4d",
+      "repository": "https://github.com/EXEEGames/TestGame/"
+    }
   ]
 }
