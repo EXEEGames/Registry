@@ -1,80 +1,137 @@
-name: Update Game
-description: Update an existing EXEE game
-title: "[GAME UPDATE]: "
-labels: ["game-update"]
-
+name: Update Existing Game
+description: Update an existing game on the EXEE platform
+title: "[GAME UPDATE] "
+labels: ["game-update", "pending-review"]
 body:
-
+  - type: markdown
+    attributes:
+      value: |
+        ## Update Your Game on EXEE
+        
+        Use this form to update an existing game. Your update will be scanned and reviewed.
+        
+        **Important:**
+        - Only update games you've previously submitted
+        - Your update will go through the same security scanning as new submissions
+        - Include your game's ID from the registry
+        
   - type: input
     id: game_id
     attributes:
-      label: Game ID (from submission)
+      label: Game ID
+      description: The unique ID of your game from games.json (format EXEE-TIMESTAMP-CODE)
+      placeholder: "EXEE-1706029912-A9F3K"
     validations:
       required: true
-
-  - type: input
-    id: version
-    attributes:
-      label: Version
-      placeholder: 1.1.0
-
+      
   - type: input
     id: game_name
     attributes:
-      label: Updated Game Name
-
-  - type: textarea
-    id: description
-    attributes:
-      label: Updated Description
-
+      label: Game Name
+      description: Current name of your game (must match registry)
+      placeholder: "My Awesome Game"
+    validations:
+      required: true
+      
   - type: input
-    id: download
+    id: new_version
     attributes:
-      label: New PCK Download URL
-
-  - type: input
-    id: thumbnail
-    attributes:
-      label: New Thumbnail URL
-
-  - type: textarea
-    id: images
-    attributes:
-      label: Screenshot URLs
-      description: One image per line
-
-  - type: textarea
-    id: genres
-    attributes:
-      label: Genres
-      description: One genre per line
-
-  - type: dropdown
-    id: age_rating
-    attributes:
-      label: Age Rating
-      options:
-        - N/A
-        - 3+
-        - 7+
-        - 12+
-        - 16+
-        - 18+ (NOT ALLOWED)
-        - All ages
-
-  - type: dropdown
-    id: multiplayer
-    attributes:
-      label: Multiplayer
-      options:
-        - Singleplayer
-        - P2P
-        - Online
-
+      label: New Version
+      description: New version number (must be higher than current)
+      placeholder: "1.1.0"
+    validations:
+      required: true
+      
   - type: textarea
     id: changelog
     attributes:
       label: Changelog
+      description: What's new in this version?
+      placeholder: |
+        - Fixed bug with player movement
+        - Added new levels
+        - Improved graphics
     validations:
       required: true
+      
+  - type: input
+    id: download_url
+    attributes:
+      label: New .pck Download URL
+      description: Direct download URL to the updated .pck file
+      placeholder: "https://github.com/username/game/releases/download/v1.1.0/game.pck"
+    validations:
+      required: true
+      
+  - type: input
+    id: repository
+    attributes:
+      label: Source Code Repository
+      description: GitHub repository URL (should match original submission)
+      placeholder: "https://github.com/username/game-repo"
+    validations:
+      required: true
+      
+  - type: textarea
+    id: description
+    attributes:
+      label: Updated Description (Optional)
+      description: Leave blank to keep current description
+      placeholder: "New description if you want to update it"
+    validations:
+      required: false
+      
+  - type: input
+    id: thumbnail
+    attributes:
+      label: Updated Thumbnail URL (Optional)
+      description: Leave blank to keep current thumbnail
+      placeholder: "https://example.com/new-thumbnail.png"
+    validations:
+      required: false
+      
+  - type: textarea
+    id: images
+    attributes:
+      label: Updated Screenshot URLs (Optional)
+      description: Leave blank to keep current screenshots. One URL per line.
+      placeholder: |
+        https://example.com/screenshot1.png
+        https://example.com/screenshot2.png
+    validations:
+      required: false
+      
+  - type: dropdown
+    id: genres
+    attributes:
+      label: Updated Genres (Optional)
+      description: Leave empty to keep current genres
+      multiple: true
+      options:
+        - Horror
+        - Sandbox
+        - Puzzle
+        - Multiplayer
+        - Adventure
+        - Simulation
+        - Action
+        - RPG
+        - Strategy
+        - Sports
+        - Racing
+        - Platformer
+    validations:
+      required: false
+      
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Update Agreement
+      description: By submitting this update, you agree to the following
+      options:
+        - label: I am the original developer or have permission to update this game
+          required: true
+        - label: I understand this update will be scanned for security issues
+          required: true
+        - label: The repository contains the updated source code
+          required: true

@@ -1,0 +1,305 @@
+name: Add Game to Registry
+
+on:
+  issues:
+    types: [labeled]
+
+jobs:
+  add-to-registry:
+    if: github.event.label.name == 'accepted'
+    runs-on: ubuntu-latest
+    
+    permissions:
+      contents: write
+      issues: write
+      
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.ADD_TO_PROJECT_PAT }}
+          
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          
+      - name: Install dependencies
+        run: |
+          pip install requests pyyaml
+          
+      - name: Parse issue and update registry
+        id: update_registry
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const issue = context.payload.issue;
+            const body = issue.body;
+            
+            // Check if already processed
+            const comments = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number
+            });
+            
+            const alreadyAdded = comments.data.some(comment => 
+              comment.body.includes('✅ Game added to registry')
+            );
+            
+            if (alreadyAdded) {
+              console.log('Game already added to registry');
+              return { skip: true };
+            }
+            
+            // Parse the issue body
+            const parseField = (fieldName) => {
+              const regex = new RegExp(`### ${fieldName}\\s*\\n\\s*([^#]+)`, 'i');
+              const match = body.match(regex);
+              return match ? match[1].trim() : '';
+            };
+            
+            const parseMultipleChoice = (fieldName) => {
+              const regex = new RegExp(`### ${fieldName}\\s*\\n([\\s\\S]*?)(?=\\n###|$)`, 'i');
+              const match = body.match(regex);
+              if (!match) return [];
+              
+              const items = match[1].match(/- \[x\] (.+)/gi);
+              return items ? items.map(item => item.replace(/- \[x\] /i, '').trim()) : [];
+            };
+            
+            const isUpdate = issue.labels.some(label => label.name === 'game-update');
+            
+            let data = {
+              isUpdate: isUpdate,
+              issueNumber: issue.number,
+              gameName: parseField('Game Name'),
+              description: parseField(isUpdate ? 'Updated Description' : 'Game Description'),
+              developer: parseField('Developer Name'),
+              version: parseField(isUpdate ? 'New Version' : 'Version'),
+              downloadUrl: parseField(isUpdate ? 'New .pck Download URL' : 'Game .pck Download URL'),
+              repository: parseField('Source Code Repository'),
+              thumbnail: parseField(isUpdate ? 'Updated Thumbnail URL' : 'Thumbnail URL'),
+            };
+            
+            if (isUpdate) {
+              data.gameId = parseField('Game ID');
+              data.changelog = parseField('Changelog');
+              const updatedImages = parseField('Updated Screenshot URLs');
+              const updatedGenres = parseMultipleChoice('Updated Genres');
+              data.images = updatedImages ? updatedImages.split('\n').filter(url => url.trim()) : null;
+              data.genres = updatedGenres.length > 0 ? updatedGenres : null;
+            } else {
+              const images = parseField('Screenshot URLs');
+              data.images = images.split('\n').filter(url => url.trim());
+              data.genres = parseMultipleChoice('Genres');
+              data.ageRating = parseField('Age Rating');
+              data.multiplayer = parseField('Multiplayer Type');
+            }
+            
+            fs.writeFileSync('issue_data.json', JSON.stringify(data, null, 2));
+            
+            return data;
+            
+      - name: Add or update game in games.json
+        run: |
+          python3 << 'EOF'
+          import json
+          import requests
+          from datetime import datetime
+          import random
+          import string
+          
+          # Load issue data
+          with open('issue_data.json') as f:
+              data = json.load(f)
+          
+          if data.get('skip'):
+              print("Skipping - already processed")
+              exit(0)
+          
+          # Load existing games.json
+          try:
+              with open('games.json', 'r') as f:
+                  registry = json.load(f)
+          except FileNotFoundError:
+              registry = {'games': []}
+          
+          # Get SHA256 from artifacts or calculate
+          sha256 = ''
+          try:
+              # Try to download the artifact from the previous workflow run
+              # For now, we'll download and calculate the hash directly
+              response = requests.get(data['downloadUrl'], timeout=300)
+              if response.status_code == 200:
+                  import hashlib
+                  sha256 = hashlib.sha256(response.content).hexdigest()
+                  print(f"Calculated SHA256: {sha256}")
+          except Exception as e:
+              print(f"Warning: Could not calculate SHA256: {e}")
+          
+          is_update = data.get('isUpdate', False)
+          
+          if is_update:
+              # Update existing game
+              game_id = data['gameId']
+              game_found = False
+              
+              for game in registry['games']:
+                  if game['id'] == game_id:
+                      game_found = True
+                      # Update fields
+                      game['version'] = data['version']
+                      game['updated_at'] = datetime.utcnow().isoformat() + 'Z'
+                      game['download'] = data['downloadUrl']
+                      game['sha256'] = sha256
+                      
+                      # Update optional fields if provided
+                      if data.get('description'):
+                          game['description'] = data['description']
+                      if data.get('thumbnail'):
+                          game['thumbnail'] = data['thumbnail']
+                      if data.get('images'):
+                          game['images'] = data['images']
+                      if data.get('genres'):
+                          game['genres'] = data['genres']
+                      
+                      print(f"Updated game: {game['name']}")
+                      break
+              
+              if not game_found:
+                  print(f"Error: Game ID {game_id} not found in registry")
+                  with open('update_error.txt', 'w') as f:
+                      f.write(f"Game ID {game_id} not found")
+                  exit(1)
+          else:
+              # Add new game
+              # Generate unique ID
+              timestamp = int(datetime.utcnow().timestamp())
+              random_code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=5))
+              game_id = f"EXEE-{timestamp}-{random_code}-{data['issueNumber']}"
+              
+              new_game = {
+                  'id': game_id,
+                  'name': data['gameName'],
+                  'description': data['description'],
+                  'developer': data['developer'],
+                  'version': data['version'],
+                  'created_at': datetime.utcnow().isoformat() + 'Z',
+                  'updated_at': datetime.utcnow().isoformat() + 'Z',
+                  'genres': data['genres'],
+                  'age_rating': data['ageRating'],
+                  'thumbnail': data['thumbnail'],
+                  'images': data['images'],
+                  'multiplayer': data['multiplayer'],
+                  'download': data['downloadUrl'],
+                  'sha256': sha256,
+                  'repository': data['repository']
+              }
+              
+              registry['games'].append(new_game)
+              print(f"Added new game: {new_game['name']} with ID: {game_id}")
+              
+              # Save game ID for comment
+              with open('game_id.txt', 'w') as f:
+                  f.write(game_id)
+          
+          # Save updated registry
+          with open('games.json', 'w') as f:
+              json.dump(registry, f, indent=2)
+          
+          print("Registry updated successfully")
+          EOF
+          
+      - name: Commit and push changes
+        run: |
+          git config user.name "EXEE Bot"
+          git config user.email "bot@exee.games"
+          git add games.json
+          
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Add/Update game from issue #${{ github.event.issue.number }}"
+            git push
+            echo "Changes pushed successfully"
+          fi
+          
+      - name: Post success comment
+        uses: actions/github-script@v7
+        if: success()
+        with:
+          script: |
+            const fs = require('fs');
+            
+            let gameId = 'N/A';
+            if (fs.existsSync('game_id.txt')) {
+              gameId = fs.readFileSync('game_id.txt', 'utf8').trim();
+            }
+            
+            const data = JSON.parse(fs.readFileSync('issue_data.json', 'utf8'));
+            const isUpdate = data.isUpdate;
+            
+            let comment = isUpdate 
+              ? '## ✅ Game Updated in Registry\n\n' 
+              : '## ✅ Game Added to Registry\n\n';
+            
+            if (!isUpdate) {
+              comment += `**Game ID:** \`${gameId}\`\n`;
+              comment += '*(Save this ID for future updates)*\n\n';
+            }
+            
+            comment += `**Game Name:** ${data.gameName}\n`;
+            comment += `**Version:** ${data.version}\n\n`;
+            
+            if (isUpdate) {
+              comment += '### Changelog\n';
+              comment += data.changelog + '\n\n';
+            }
+            
+            comment += '---\n\n';
+            comment += '🎮 Your game is now live on EXEE! Players can find and play it in the launcher.\n\n';
+            
+            if (!isUpdate) {
+              comment += '**Next Steps:**\n';
+              comment += '- To update your game in the future, use the "Update Existing Game" issue template\n';
+              comment += '- Include the Game ID shown above when updating\n';
+            }
+            
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: comment
+            });
+            
+            // Close the issue
+            await github.rest.issues.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              state: 'closed'
+            });
+            
+      - name: Post error comment
+        uses: actions/github-script@v7
+        if: failure()
+        with:
+          script: |
+            const fs = require('fs');
+            
+            let error = 'An unknown error occurred while adding the game to the registry.';
+            
+            if (fs.existsSync('update_error.txt')) {
+              error = fs.readFileSync('update_error.txt', 'utf8');
+            }
+            
+            const comment = `## ❌ Failed to Add Game to Registry\n\n**Error:** ${error}\n\nPlease contact a moderator for assistance.`;
+            
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: comment
+            });

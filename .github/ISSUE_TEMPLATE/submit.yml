@@ -1,102 +1,157 @@
-name: Submit Game
-description: Submit a new game to EXEE
-title: "[GAME SUBMISSION]: "
-labels: ["game-submission"]
-
+name: Submit New Game
+description: Submit a new game to the EXEE platform
+title: "[GAME SUBMISSION] "
+labels: ["game-submission", "pending-review"]
 body:
-
+  - type: markdown
+    attributes:
+      value: |
+        ## Submit Your Game to EXEE
+        
+        Thank you for submitting your game! Please fill out all required fields below.
+        
+        **Important Notes:**
+        - Your game will be automatically scanned for malware and reviewed by AI
+        - A moderator will review the results and approve/reject your submission
+        - The .pck file and repository will both be scanned
+        - Make sure your repository is public and contains the game source code
+        
   - type: input
     id: game_name
     attributes:
       label: Game Name
+      description: The display name of your game
+      placeholder: "My Awesome Game"
     validations:
       required: true
-
+      
   - type: textarea
     id: description
     attributes:
-      label: Description
+      label: Game Description
+      description: A detailed description of your game (what it's about, how to play, etc.)
+      placeholder: "An epic adventure where you..."
     validations:
       required: true
-
+      
   - type: input
     id: developer
     attributes:
       label: Developer Name
+      description: Your name or studio name
+      placeholder: "GameStudio"
     validations:
       required: true
-
+      
   - type: input
-    id: repository
+    id: version
     attributes:
-      label: Repository URL
+      label: Version
+      description: Game version number
+      placeholder: "1.0.0"
     validations:
       required: true
-
-  - type: input
-    id: download
-    attributes:
-      label: PCK Download URL
-    validations:
-      required: true
-
-  - type: input
-    id: thumbnail
-    attributes:
-      label: Thumbnail URL
-    validations:
-      required: true
-
-  - type: textarea
-    id: images
-    attributes:
-      label: Screenshot URLs
-      description: One image URL per line
-    validations:
-      required: true
-
-  - type: textarea
+      
+  - type: dropdown
     id: genres
     attributes:
       label: Genres
-      description: One genre per line
+      description: Select all genres that apply to your game
+      multiple: true
+      options:
+        - Horror
+        - Sandbox
+        - Puzzle
+        - Multiplayer
+        - Adventure
+        - Simulation
+        - Action
+        - RPG
+        - Strategy
+        - Sports
+        - Racing
+        - Platformer
     validations:
       required: true
-
+      
   - type: dropdown
     id: age_rating
     attributes:
       label: Age Rating
+      description: Recommended age rating for your game
       options:
-        - N/A
-        - 3+
-        - 7+
-        - 12+
-        - 16+
-        - 18+ (NOT ALLOWED)
-        - All ages
+        - "7+"
+        - "10+"
+        - "13+"
+        - "16+"
+        - "18+ (NOT ALLOWED)"
+        - "N/A"
+        - "All Ages"
     validations:
       required: true
-
+      
+  - type: input
+    id: thumbnail
+    attributes:
+      label: Thumbnail URL
+      description: Direct URL to your game's thumbnail image (recommended 512x512px)
+      placeholder: "https://example.com/thumbnail.png"
+    validations:
+      required: true
+      
+  - type: textarea
+    id: images
+    attributes:
+      label: Screenshot URLs
+      description: Direct URLs to game screenshots (one per line, 2-5 recommended)
+      placeholder: |
+        https://example.com/screenshot1.png
+        https://example.com/screenshot2.png
+        https://example.com/screenshot3.png
+    validations:
+      required: true
+      
   - type: dropdown
     id: multiplayer
     attributes:
-      label: Multiplayer
+      label: Multiplayer Type
+      description: Select the multiplayer type for your game
       options:
-        - Singleplayer
-        - External Multiplayer (3rd Party - eg. Photon)
-        - EXEE Multiplayer
-
-  - type: checkboxes
-    id: confirmation
+        - "SINGLEPLAYER"
+        - "EXEE"
+        - "EXTERNAL"
+    validations:
+      required: true
+      
+  - type: input
+    id: download_url
     attributes:
-      label: Confirmation
+      label: Game .pck Download URL
+      description: Direct download URL to your game's .pck file (must be publicly accessible)
+      placeholder: "https://github.com/username/game/releases/download/v1.0.0/game.pck"
+    validations:
+      required: true
+      
+  - type: input
+    id: repository
+    attributes:
+      label: Source Code Repository
+      description: GitHub repository URL containing your game's source code (must be public)
+      placeholder: "https://github.com/username/game-repo"
+    validations:
+      required: true
+      
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Submission Agreement
+      description: By submitting, you agree to the following
       options:
-        - label: I confirm this game is safe
+        - label: I confirm this is my original work or I have permission to publish it
           required: true
-
-        - label: I own this content
+        - label: I understand my game will be scanned for malware and code issues
           required: true
-
-        - label: I have made this with the EXEE Godot plugin/the EXEE Editor (optional but recommended for multiplayer)
-          required: false
+        - label: I agree to the EXEE platform terms of service
+          required: true
+        - label: The source code repository is public and contains the actual game code
+          required: true

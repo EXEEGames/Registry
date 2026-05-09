@@ -1,0 +1,361 @@
+name: Process Game Submission
+
+on:
+  issues:
+    types: [opened, labeled]
+
+jobs:
+  scan-and-review:
+    if: |
+      (github.event.action == 'opened' && 
+       (contains(github.event.issue.labels.*.name, 'game-submission') || 
+        contains(github.event.issue.labels.*.name, 'game-update'))) ||
+      (github.event.action == 'labeled' && 
+       github.event.label.name == 'rescan')
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clamav clamav-daemon
+          sudo freshclam
+          pip install requests pyyaml anthropic gitpython
+          
+      - name: Parse issue body
+        id: parse
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.payload.issue;
+            const body = issue.body;
+            
+            // Parse the issue body to extract form fields
+            const parseField = (fieldName) => {
+              const regex = new RegExp(`### ${fieldName}\\s*\\n\\s*([^#]+)`, 'i');
+              const match = body.match(regex);
+              return match ? match[1].trim() : '';
+            };
+            
+            const parseMultipleChoice = (fieldName) => {
+              const regex = new RegExp(`### ${fieldName}\\s*\\n([\\s\\S]*?)(?=\\n###|$)`, 'i');
+              const match = body.match(regex);
+              if (!match) return [];
+              
+              const items = match[1].match(/- \[x\] (.+)/gi);
+              return items ? items.map(item => item.replace(/- \[x\] /i, '').trim()) : [];
+            };
+            
+            const isUpdate = issue.labels.some(label => label.name === 'game-update');
+            
+            let data = {
+              isUpdate: isUpdate,
+              issueNumber: issue.number,
+              gameName: parseField('Game Name'),
+              description: parseField(isUpdate ? 'Updated Description' : 'Game Description'),
+              developer: parseField('Developer Name'),
+              version: parseField(isUpdate ? 'New Version' : 'Version'),
+              downloadUrl: parseField(isUpdate ? 'New .pck Download URL' : 'Game .pck Download URL'),
+              repository: parseField('Source Code Repository'),
+              thumbnail: parseField(isUpdate ? 'Updated Thumbnail URL' : 'Thumbnail URL'),
+            };
+            
+            if (isUpdate) {
+              data.gameId = parseField('Game ID');
+              data.changelog = parseField('Changelog');
+              const updatedImages = parseField('Updated Screenshot URLs');
+              const updatedGenres = parseMultipleChoice('Updated Genres');
+              data.images = updatedImages ? updatedImages.split('\n').filter(url => url.trim()) : null;
+              data.genres = updatedGenres.length > 0 ? updatedGenres : null;
+            } else {
+              const images = parseField('Screenshot URLs');
+              data.images = images.split('\n').filter(url => url.trim());
+              data.genres = parseMultipleChoice('Genres');
+              data.ageRating = parseField('Age Rating');
+              data.multiplayer = parseField('Multiplayer Type');
+            }
+            
+            // Save to file
+            const fs = require('fs');
+            fs.writeFileSync('issue_data.json', JSON.stringify(data, null, 2));
+            
+            return data;
+            
+      - name: Download and scan .pck file
+        id: scan_pck
+        run: |
+          python3 << 'EOF'
+          import json
+          import requests
+          import subprocess
+          import hashlib
+          import os
+          
+          with open('issue_data.json') as f:
+              data = json.load(f)
+          
+          download_url = data['downloadUrl']
+          
+          print(f"Downloading .pck from {download_url}")
+          response = requests.get(download_url, timeout=300)
+          
+          if response.status_code != 200:
+              print(f"::error::Failed to download .pck file: HTTP {response.status_code}")
+              exit(1)
+          
+          # Save the file
+          pck_path = 'game.pck'
+          with open(pck_path, 'wb') as f:
+              f.write(response.content)
+          
+          # Calculate SHA256
+          sha256_hash = hashlib.sha256(response.content).hexdigest()
+          print(f"SHA256: {sha256_hash}")
+          
+          # Save hash
+          with open('sha256.txt', 'w') as f:
+              f.write(sha256_hash)
+          
+          # Scan with ClamAV
+          print("Scanning with ClamAV...")
+          result = subprocess.run(['clamscan', '--stdout', pck_path], 
+                                 capture_output=True, text=True)
+          
+          with open('clam_scan.txt', 'w') as f:
+              f.write(result.stdout)
+          
+          if 'FOUND' in result.stdout:
+              print("::error::Malware detected in .pck file!")
+              with open('scan_failed.txt', 'w') as f:
+                  f.write('malware_detected')
+              exit(1)
+          else:
+              print("✓ No malware detected in .pck")
+          EOF
+          
+      - name: Clone and scan repository
+        id: scan_repo
+        run: |
+          python3 << 'EOF'
+          import json
+          import subprocess
+          import os
+          import git
+          
+          with open('issue_data.json') as f:
+              data = json.load(f)
+          
+          repo_url = data['repository']
+          
+          print(f"Cloning repository {repo_url}")
+          
+          try:
+              git.Repo.clone_from(repo_url, 'game_repo')
+          except Exception as e:
+              print(f"::error::Failed to clone repository: {e}")
+              exit(1)
+          
+          # Scan repository with ClamAV
+          print("Scanning repository with ClamAV...")
+          result = subprocess.run(['clamscan', '-r', '--stdout', 'game_repo'], 
+                                 capture_output=True, text=True)
+          
+          with open('repo_scan.txt', 'w') as f:
+              f.write(result.stdout)
+          
+          if 'FOUND' in result.stdout:
+              print("::error::Malware detected in repository!")
+              with open('scan_failed.txt', 'w') as f:
+                  f.write('malware_detected')
+              exit(1)
+          else:
+              print("✓ No malware detected in repository")
+          EOF
+          
+      - name: AI Code Review
+        id: ai_review
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          python3 << 'EOF'
+          import json
+          import os
+          from anthropic import Anthropic
+          
+          client = Anthropic(api_key=os.environ['ANTHROPIC_API_KEY'])
+          
+          with open('issue_data.json') as f:
+              data = json.load(f)
+          
+          # Collect GDScript files
+          gdscript_files = []
+          for root, dirs, files in os.walk('game_repo'):
+              # Skip .git directory
+              if '.git' in root:
+                  continue
+              for file in files:
+                  if file.endswith('.gd'):
+                      file_path = os.path.join(root, file)
+                      try:
+                          with open(file_path, 'r', encoding='utf-8') as f:
+                              content = f.read()
+                              gdscript_files.append({
+                                  'path': file_path,
+                                  'content': content[:5000]  # Limit to first 5000 chars
+                              })
+                      except:
+                          pass
+          
+          # Prepare code review prompt
+          code_snippets = "\n\n".join([
+              f"File: {f['path']}\n```gdscript\n{f['content']}\n```"
+              for f in gdscript_files[:10]  # Limit to 10 files
+          ])
+          
+          prompt = f"""You are reviewing a game submission for the EXEE platform (a Roblox-like game platform for Godot games).
+
+Game Information:
+- Name: {data['gameName']}
+- Developer: {data.get('developer', 'N/A')}
+- Version: {data['version']}
+
+Please analyze the following GDScript code files for:
+
+1. **Security Issues**: 
+   - Suspicious network requests to unknown domains
+   - File system access outside game directory
+   - Code injection vulnerabilities
+   - Obfuscated or intentionally hidden malicious code
+   - Data exfiltration attempts
+
+2. **Inappropriate Content**:
+   - Excessive violence or gore
+   - Sexual content
+   - Hate speech or discriminatory content
+   - Scam or phishing attempts
+
+3. **Code Quality**:
+   - Major bugs or errors
+   - Performance issues
+   - Best practice violations
+
+Code Files:
+{code_snippets}
+
+Provide a structured review with:
+- Overall Risk Level: LOW / MEDIUM / HIGH / CRITICAL
+- Security Concerns (list any found)
+- Content Concerns (list any found)  
+- Code Quality Issues (list any found)
+- Recommendation: APPROVE / REJECT / NEEDS_REVIEW
+
+Keep your response concise and focused on actionable findings."""
+
+          try:
+              message = client.messages.create(
+                  model="claude-sonnet-4-20250514",
+                  max_tokens=2000,
+                  messages=[{"role": "user", "content": prompt}]
+              )
+              
+              review = message.content[0].text
+              
+              with open('ai_review.txt', 'w') as f:
+                  f.write(review)
+              
+              print("AI Review completed")
+              print(review)
+              
+          except Exception as e:
+              print(f"::warning::AI review failed: {e}")
+              with open('ai_review.txt', 'w') as f:
+                  f.write(f"AI review failed: {e}\n\nPlease manually review the code.")
+          EOF
+          
+      - name: Post results as comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            
+            let comment = '## 🔍 Automated Security Scan Results\n\n';
+            
+            // Check if scan failed
+            if (fs.existsSync('scan_failed.txt')) {
+              const failure = fs.readFileSync('scan_failed.txt', 'utf8');
+              comment += '### ⛔ SCAN FAILED\n\n';
+              comment += '**Status:** REJECTED - Malware detected\n\n';
+              comment += '❌ This submission has been automatically rejected due to malware detection.\n\n';
+            } else {
+              comment += '### ✅ Malware Scan Passed\n\n';
+              
+              // SHA256
+              if (fs.existsSync('sha256.txt')) {
+                const sha256 = fs.readFileSync('sha256.txt', 'utf8').trim();
+                comment += `**SHA256 Hash:** \`${sha256}\`\n\n`;
+              }
+              
+              // ClamAV PCK Scan
+              if (fs.existsSync('clam_scan.txt')) {
+                const clamScan = fs.readFileSync('clam_scan.txt', 'utf8');
+                comment += '<details>\n<summary>📦 .pck File Scan Results</summary>\n\n```\n';
+                comment += clamScan.substring(0, 2000);
+                comment += '\n```\n</details>\n\n';
+              }
+              
+              // ClamAV Repo Scan
+              if (fs.existsSync('repo_scan.txt')) {
+                const repoScan = fs.readFileSync('repo_scan.txt', 'utf8');
+                comment += '<details>\n<summary>📁 Repository Scan Results</summary>\n\n```\n';
+                comment += repoScan.substring(0, 2000);
+                comment += '\n```\n</details>\n\n';
+              }
+              
+              // AI Review
+              if (fs.existsSync('ai_review.txt')) {
+                const aiReview = fs.readFileSync('ai_review.txt', 'utf8');
+                comment += '### 🤖 AI Code Review\n\n';
+                comment += aiReview;
+                comment += '\n\n';
+              }
+              
+              comment += '---\n\n';
+              comment += '### 👨‍💼 Next Steps\n\n';
+              comment += 'A moderator will review these results and either:\n';
+              comment += '- Add the `accepted` label to approve and publish the game\n';
+              comment += '- Add the `rejected` label with feedback\n';
+              comment += '- Request changes by commenting\n\n';
+              comment += '**Note:** Adding the `accepted` label will automatically add this game to the registry.\n';
+            }
+            
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: comment
+            });
+            
+            // Add scan-complete label
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              labels: ['scan-complete']
+            });
+            
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: scan-results-${{ github.event.issue.number }}
+          path: |
+            *.txt
+            issue_data.json
