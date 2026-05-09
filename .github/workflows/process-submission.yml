@@ -252,10 +252,12 @@ jobs:
           )
 
           response = requests.post(
-              'https://api.openrouter.ai/v1/chat/completions',
+              'https://openrouter.ai/api/v1/chat/completions',
               headers={
                   'Authorization': f'Bearer {api_key}',
                   'Content-Type': 'application/json',
+                  'HTTP-Referer': 'https://github.com',
+                  'X-OpenRouter-Title': 'EXEE Game Review Workflow',
               },
               json={
                   'model': 'liquid/lfm-2.5-1.2b-thinking:free',
