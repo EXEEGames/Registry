@@ -11,7 +11,9 @@ jobs:
        (contains(github.event.issue.labels.*.name, 'game-submission') || 
         contains(github.event.issue.labels.*.name, 'game-update'))) ||
       (github.event.action == 'labeled' && 
-       github.event.label.name == 'rescan')
+       (github.event.label.name == 'game-submission' ||
+        github.event.label.name == 'game-update' ||
+        github.event.label.name == 'rescan'))
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
