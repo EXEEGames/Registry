@@ -13,23 +13,22 @@ jobs:
       (github.event.action == 'labeled' && 
        github.event.label.name == 'rescan')
     runs-on: ubuntu-latest
-    
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        
+
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
-          
+          python-version: "3.11"
+
       - name: Install dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y clamav clamav-daemon
           sudo freshclam
-          pip install requests pyyaml anthropic gitpython
-          
+          pip install requests pyyaml gitpython
+
       - name: Parse issue body
         id: parse
         uses: actions/github-script@v7
@@ -37,14 +36,14 @@ jobs:
           script: |
             const issue = context.payload.issue;
             const body = issue.body;
-            
+
             // Parse the issue body to extract form fields
             const parseField = (fieldName) => {
               const regex = new RegExp(`### ${fieldName}\\s*\\n\\s*([^#]+)`, 'i');
               const match = body.match(regex);
               return match ? match[1].trim() : '';
             };
-            
+
             const parseMultipleChoice = (fieldName) => {
               const regex = new RegExp(`### ${fieldName}\\s*\\n([\\s\\S]*?)(?=\\n###|$)`, 'i');
               const match = body.match(regex);
@@ -53,9 +52,9 @@ jobs:
               const items = match[1].match(/- \[x\] (.+)/gi);
               return items ? items.map(item => item.replace(/- \[x\] /i, '').trim()) : [];
             };
-            
+
             const isUpdate = issue.labels.some(label => label.name === 'game-update');
-            
+
             let data = {
               isUpdate: isUpdate,
               issueNumber: issue.number,
@@ -67,7 +66,7 @@ jobs:
               repository: parseField('Source Code Repository'),
               thumbnail: parseField(isUpdate ? 'Updated Thumbnail URL' : 'Thumbnail URL'),
             };
-            
+
             if (isUpdate) {
               data.gameId = parseField('Game ID');
               data.changelog = parseField('Changelog');
@@ -82,13 +81,13 @@ jobs:
               data.ageRating = parseField('Age Rating');
               data.multiplayer = parseField('Multiplayer Type');
             }
-            
+
             // Save to file
             const fs = require('fs');
             fs.writeFileSync('issue_data.json', JSON.stringify(data, null, 2));
-            
+
             return data;
-            
+
       - name: Download and scan .pck file
         id: scan_pck
         run: |
@@ -98,40 +97,40 @@ jobs:
           import subprocess
           import hashlib
           import os
-          
+
           with open('issue_data.json') as f:
               data = json.load(f)
-          
+
           download_url = data['downloadUrl']
-          
+
           print(f"Downloading .pck from {download_url}")
           response = requests.get(download_url, timeout=300)
-          
+
           if response.status_code != 200:
               print(f"::error::Failed to download .pck file: HTTP {response.status_code}")
               exit(1)
-          
+
           # Save the file
           pck_path = 'game.pck'
           with open(pck_path, 'wb') as f:
               f.write(response.content)
-          
+
           # Calculate SHA256
           sha256_hash = hashlib.sha256(response.content).hexdigest()
           print(f"SHA256: {sha256_hash}")
-          
+
           # Save hash
           with open('sha256.txt', 'w') as f:
               f.write(sha256_hash)
-          
+
           # Scan with ClamAV
           print("Scanning with ClamAV...")
           result = subprocess.run(['clamscan', '--stdout', pck_path], 
                                  capture_output=True, text=True)
-          
+
           with open('clam_scan.txt', 'w') as f:
               f.write(result.stdout)
-          
+
           if 'FOUND' in result.stdout:
               print("::error::Malware detected in .pck file!")
               with open('scan_failed.txt', 'w') as f:
@@ -140,7 +139,7 @@ jobs:
           else:
               print("✓ No malware detected in .pck")
           EOF
-          
+
       - name: Clone and scan repository
         id: scan_repo
         run: |
@@ -149,28 +148,28 @@ jobs:
           import subprocess
           import os
           import git
-          
+
           with open('issue_data.json') as f:
               data = json.load(f)
-          
+
           repo_url = data['repository']
-          
+
           print(f"Cloning repository {repo_url}")
-          
+
           try:
               git.Repo.clone_from(repo_url, 'game_repo')
           except Exception as e:
               print(f"::error::Failed to clone repository: {e}")
               exit(1)
-          
+
           # Scan repository with ClamAV
           print("Scanning repository with ClamAV...")
           result = subprocess.run(['clamscan', '-r', '--stdout', 'game_repo'], 
                                  capture_output=True, text=True)
-          
+
           with open('repo_scan.txt', 'w') as f:
               f.write(result.stdout)
-          
+
           if 'FOUND' in result.stdout:
               print("::error::Malware detected in repository!")
               with open('scan_failed.txt', 'w') as f:
@@ -179,26 +178,27 @@ jobs:
           else:
               print("✓ No malware detected in repository")
           EOF
-          
+
       - name: AI Code Review
         id: ai_review
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         run: |
           python3 << 'EOF'
           import json
           import os
-          from anthropic import Anthropic
-          
-          client = Anthropic(api_key=os.environ['ANTHROPIC_API_KEY'])
-          
+          import requests
+
+          api_key = os.environ.get('OPENROUTER_API_KEY')
+          if not api_key:
+              raise SystemExit('OPENROUTER_API_KEY is required')
+
           with open('issue_data.json') as f:
               data = json.load(f)
-          
+
           # Collect GDScript files
           gdscript_files = []
           for root, dirs, files in os.walk('game_repo'):
-              # Skip .git directory
               if '.git' in root:
                   continue
               for file in files:
@@ -209,85 +209,84 @@ jobs:
                               content = f.read()
                               gdscript_files.append({
                                   'path': file_path,
-                                  'content': content[:5000]  # Limit to first 5000 chars
+                                  'content': content[:5000]
                               })
-                      except:
+                      except Exception:
                           pass
-          
-          # Prepare code review prompt
+
           code_snippets = "\n\n".join([
               f"File: {f['path']}\n```gdscript\n{f['content']}\n```"
-              for f in gdscript_files[:10]  # Limit to 10 files
+              for f in gdscript_files[:10]
           ])
-          
-          prompt = f"""You are reviewing a game submission for the EXEE platform (a Roblox-like game platform for Godot games).
 
-Game Information:
-- Name: {data['gameName']}
-- Developer: {data.get('developer', 'N/A')}
-- Version: {data['version']}
+          prompt = (
+              f"You are reviewing a game submission for the EXEE platform (a Roblox-like game platform for Godot games).\n\n"
+              f"Game Information:\n- Name: {data['gameName']}\n- Developer: {data.get('developer', 'N/A')}\n- Version: {data['version']}\n\n"
+              "Please analyze the following GDScript code files for:\n\n"
+              "1. Security Issues:\n"
+              "   - Suspicious network requests to unknown domains\n"
+              "   - File system access outside game directory\n"
+              "   - Code injection vulnerabilities\n"
+              "   - Obfuscated or intentionally hidden malicious code\n"
+              "   - Data exfiltration attempts\n\n"
+              "2. Inappropriate Content:\n"
+              "   - Excessive violence or gore\n"
+              "   - Sexual content\n"
+              "   - Hate speech or discriminatory content\n"
+              "   - Scam or phishing attempts\n\n"
+              "3. Code Quality:\n"
+              "   - Major bugs or errors\n"
+              "   - Performance issues\n"
+              "   - Best practice violations\n\n"
+              f"Code Files:\n{code_snippets}\n\n"
+              "Provide a structured review with:\n"
+              "- Overall Risk Level: LOW / MEDIUM / HIGH / CRITICAL\n"
+              "- Security Concerns (list any found)\n"
+              "- Content Concerns (list any found)\n"
+              "- Code Quality Issues (list any found)\n"
+              "- Recommendation: APPROVE / REJECT / NEEDS_REVIEW\n\n"
+              "Keep your response concise and focused on actionable findings."
+          )
 
-Please analyze the following GDScript code files for:
+          response = requests.post(
+              'https://api.openrouter.ai/v1/chat/completions',
+              headers={
+                  'Authorization': f'Bearer {api_key}',
+                  'Content-Type': 'application/json',
+              },
+              json={
+                  'model': 'liquid/lfm-2.5-1.2b-thinking:free',
+                  'messages': [
+                      {'role': 'system', 'content': 'You are a concise code review assistant for game submission audits.'},
+                      {'role': 'user', 'content': prompt},
+                  ],
+                  'max_tokens': 1000,
+                  'temperature': 0.2,
+              },
+              timeout=300,
+          )
 
-1. **Security Issues**: 
-   - Suspicious network requests to unknown domains
-   - File system access outside game directory
-   - Code injection vulnerabilities
-   - Obfuscated or intentionally hidden malicious code
-   - Data exfiltration attempts
+          if response.status_code != 200:
+              raise SystemExit(f'OpenRouter API request failed: {response.status_code} {response.text}')
 
-2. **Inappropriate Content**:
-   - Excessive violence or gore
-   - Sexual content
-   - Hate speech or discriminatory content
-   - Scam or phishing attempts
+          body = response.json()
+          review = body['choices'][0]['message']['content']
 
-3. **Code Quality**:
-   - Major bugs or errors
-   - Performance issues
-   - Best practice violations
+          with open('ai_review.txt', 'w', encoding='utf-8') as f:
+              f.write(review)
 
-Code Files:
-{code_snippets}
-
-Provide a structured review with:
-- Overall Risk Level: LOW / MEDIUM / HIGH / CRITICAL
-- Security Concerns (list any found)
-- Content Concerns (list any found)  
-- Code Quality Issues (list any found)
-- Recommendation: APPROVE / REJECT / NEEDS_REVIEW
-
-Keep your response concise and focused on actionable findings."""
-
-          try:
-              message = client.messages.create(
-                  model="claude-sonnet-4-20250514",
-                  max_tokens=2000,
-                  messages=[{"role": "user", "content": prompt}]
-              )
-              
-              review = message.content[0].text
-              
-              with open('ai_review.txt', 'w') as f:
-                  f.write(review)
-              
-              print("AI Review completed")
-              print(review)
-              
-          except Exception as e:
-              print(f"::warning::AI review failed: {e}")
-              with open('ai_review.txt', 'w') as f:
-                  f.write(f"AI review failed: {e}\n\nPlease manually review the code.")
+          print('AI Review completed')
+          print(review)
           EOF
-          
+
       - name: Post results as comment
         uses: actions/github-script@v7
         with:
           script: |
             const fs = require('fs');
-            
+
             let comment = '## 🔍 Automated Security Scan Results\n\n';
-            
+
             // Check if scan failed
             if (fs.existsSync('scan_failed.txt')) {
               const failure = fs.readFileSync('scan_failed.txt', 'utf8');
@@ -335,14 +334,14 @@ Keep your response concise and focused on actionable findings."""
               comment += '- Request changes by commenting\n\n';
               comment += '**Note:** Adding the `accepted` label will automatically add this game to the registry.\n';
             }
-            
+
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.issue.number,
               body: comment
             });
-            
+
             // Add scan-complete label
             await github.rest.issues.addLabels({
               owner: context.repo.owner,
@@ -350,7 +349,7 @@ Keep your response concise and focused on actionable findings."""
               issue_number: context.issue.number,
               labels: ['scan-complete']
             });
-            
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         if: always()
